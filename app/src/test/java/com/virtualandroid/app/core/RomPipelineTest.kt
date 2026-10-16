@@ -1,7 +1,5 @@
 package com.virtualandroid.app.core
 
-import com.sun.net.httpserver.HttpExchange
-import com.sun.net.httpserver.HttpServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,10 +12,13 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.net.InetSocketAddress
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
 import java.net.UnknownHostException
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.Collections
 import java.util.Random
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -27,10 +28,10 @@ class RomPipelineTest {
     @get:Rule
     val tmp = TemporaryFolder()
 
-    private lateinit var server: HttpServer
+    private lateinit var server: MiniServer
     private lateinit var zipBytes: ByteArray
-    private val rangeHeaders = mutableListOf<String>()
-    private val base get() = "http://127.0.0.1:${server.address.port}"
+    private val rangeHeaders: MutableList<String> = Collections.synchronizedList(mutableListOf<String>())
+    private val base get() = "http://127.0.0.1:${server.port}"
 
     private fun buildZip(): ByteArray {
         val out = ByteArrayOutputStream()
@@ -45,50 +46,39 @@ class RomPipelineTest {
     private fun sha(bytes: ByteArray) =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
-    private fun respond(ex: HttpExchange, code: Int, type: String, body: ByteArray) {
-        ex.responseHeaders.add("Content-Type", type)
-        ex.sendResponseHeaders(code, body.size.toLong())
-        ex.responseBody.use { it.write(body) }
-    }
-
     @Before
     fun setUp() {
         zipBytes = buildZip()
-        server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-
-        // MediaFire benzeri sayfa: indirme bağlantısı base64 ile gizli
-        server.createContext("/page") { ex ->
-            val link = Base64.getEncoder().encodeToString("$base/file.zip".toByteArray())
-            respond(ex, 200, "text/html; charset=utf-8",
-                """<html><body><a id="downloadButton" data-scrambled-url="$link">Download</a></body></html>""".toByteArray())
-        }
-        server.createContext("/nopage") { ex ->
-            respond(ex, 200, "text/html", "<html><body>dosya silindi</body></html>".toByteArray())
-        }
-        // dosya yerine HTML döndüren (engel / limit sayfası)
-        server.createContext("/blocked") { ex ->
-            respond(ex, 200, "text/html", "<html>limit doldu</html>".toByteArray())
-        }
-        // Range destekli dosya
-        server.createContext("/file.zip") { ex ->
-            val range = ex.requestHeaders.getFirst("Range")
-            if (range != null) rangeHeaders.add(range)
-            val start = range?.removePrefix("bytes=")?.removeSuffix("-")?.toLongOrNull() ?: 0L
-            ex.responseHeaders.add("Content-Type", "application/zip")
-            if (start > 0) {
-                ex.responseHeaders.add("Content-Range", "bytes $start-${zipBytes.size - 1}/${zipBytes.size}")
-                ex.sendResponseHeaders(206, zipBytes.size - start)
-                ex.responseBody.use { it.write(zipBytes, start.toInt(), zipBytes.size - start.toInt()) }
-            } else {
-                ex.sendResponseHeaders(200, zipBytes.size.toLong())
-                ex.responseBody.use { it.write(zipBytes) }
+        server = MiniServer { req ->
+            when (req.path) {
+                // MediaFire benzeri sayfa: indirme bağlantısı base64 ile gizli
+                "/page" -> {
+                    val link = Base64.getEncoder().encodeToString("$base/file.zip".toByteArray())
+                    Resp(200, "text/html; charset=utf-8",
+                        """<html><body><a id="downloadButton" data-scrambled-url="$link">Download</a></body></html>""".toByteArray())
+                }
+                "/nopage" -> Resp(200, "text/html", "<html><body>dosya silindi</body></html>".toByteArray())
+                // dosya yerine HTML döndüren (engel / limit sayfası)
+                "/blocked" -> Resp(200, "text/html", "<html>limit doldu</html>".toByteArray())
+                // Range destekli dosya
+                "/file.zip" -> {
+                    val range = req.headers["range"]
+                    if (range != null) rangeHeaders.add(range)
+                    val start = range?.removePrefix("bytes=")?.removeSuffix("-")?.toIntOrNull() ?: 0
+                    if (start > 0) {
+                        Resp(206, "application/zip", zipBytes.copyOfRange(start, zipBytes.size),
+                            mapOf("Content-Range" to "bytes $start-${zipBytes.size - 1}/${zipBytes.size}"))
+                    } else {
+                        Resp(200, "application/zip", zipBytes)
+                    }
+                }
+                else -> Resp(404, "text/plain", "yok".toByteArray())
             }
         }
-        server.start()
     }
 
     @After
-    fun tearDown() = server.stop(0)
+    fun tearDown() = server.stop()
 
     private fun entry(url: String, source: String = "direct", sha: String = "") =
         RomEntry("android7", "Android 7", source, url, sha)
@@ -266,5 +256,59 @@ class RomPipelineTest {
     fun friendlyMessages() {
         assertTrue(Errors.friendly(UnknownHostException("x")).contains("İnternet"))
         assertEquals("merhaba", Errors.friendly(InstallException("merhaba")))
+    }
+}
+
+private class Req(val path: String, val headers: Map<String, String>)
+
+private class Resp(val code: Int, val type: String, val body: ByteArray, val extra: Map<String, String> = emptyMap())
+
+/** Testler için çok küçük HTTP sunucusu. com.sun.net.httpserver Android test derleyicisinde görünmediği için ServerSocket kullanır. */
+private class MiniServer(private val handler: (Req) -> Resp) {
+    private val socket = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
+    val port: Int get() = socket.localPort
+
+    @Volatile
+    private var running = true
+
+    init {
+        Thread {
+            while (running) {
+                val c = try { socket.accept() } catch (e: Exception) { break }
+                Thread { serve(c) }.apply { isDaemon = true }.start()
+            }
+        }.apply { isDaemon = true }.start()
+    }
+
+    private fun serve(c: Socket) {
+        c.use { s ->
+            try {
+                val input = s.getInputStream().bufferedReader(Charsets.ISO_8859_1)
+                val first = input.readLine() ?: return
+                val path = first.split(" ").getOrElse(1) { "/" }
+                val headers = HashMap<String, String>()
+                while (true) {
+                    val l = input.readLine() ?: break
+                    if (l.isEmpty()) break
+                    val i = l.indexOf(':')
+                    if (i > 0) headers[l.substring(0, i).trim().lowercase()] = l.substring(i + 1).trim()
+                }
+                val r = handler(Req(path, headers))
+                val head = StringBuilder("HTTP/1.1 ${r.code} X\r\nContent-Type: ${r.type}\r\nContent-Length: ${r.body.size}\r\nConnection: close\r\n")
+                r.extra.forEach { (k, v) -> head.append("$k: $v\r\n") }
+                head.append("\r\n")
+                val out = s.getOutputStream()
+                out.write(head.toString().toByteArray(Charsets.ISO_8859_1))
+                out.write(r.body)
+                out.flush()
+            } catch (e: Exception) {
+                // istemci bağlantıyı erken kapatmış olabilir (iptal testi)
+            }
+        }
+    }
+
+    fun stop() {
+        running = false
+        try { socket.close() } catch (e: Exception) { }
     }
 }
