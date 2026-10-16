@@ -1,0 +1,46 @@
+{
+  "versions": [
+    {
+      "id": "android7",
+      "label": "Android 7",
+      "source": "mediafire",
+      "url": "https://www.mediafire.com/file/pjqllkl0hl4h9pt/rom_7andM27.zip/file",
+      "sha256": ""
+    },
+    {
+      "id": "android8",
+      "label": "Android 8",
+      "source": "mediafire",
+      "url": "",
+      "sha256": ""
+    },
+    {
+      "id": "android9",
+      "label": "Android 9",
+      "source": "mediafire",
+      "url": "",
+      "sha256": ""
+    },
+    {
+      "id": "android10",
+      "label": "Android 10",
+      "source": "mediafire",
+      "url": "",
+      "sha256": ""
+    },
+    {
+      "id": "android11",
+      "label": "Android 11",
+      "source": "mediafire",
+      "url": "",
+      "sha256": ""
+    },
+    {
+      "id": "android12",
+      "label": "Android 12",
+      "source": "mediafire",
+      "url": "",
+      "sha256": ""
+    }
+  ]
+}

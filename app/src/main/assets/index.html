@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>VM</title>
+<style>
+:root{
+  --surface:#fff7fb;--on-surface:#1d1b20;--on-var:#49454f;
+  --primary:#5a12d6;--on-primary:#ffffff;
+  --outline:#cac4d0;--navbar:#f3edf4;--indicator:#e8def8;--on-indicator:#1d192b;
+  --dialog:#f3edf7;--scrim:rgba(0,0,0,.34);--danger:#b3261e;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --surface:#141218;--on-surface:#e6e0e9;--on-var:#cac4d0;
+    --primary:#cfbcff;--on-primary:#381e72;
+    --outline:#49454f;--navbar:#211f26;--indicator:#4a4458;--on-indicator:#e8def8;
+    --dialog:#2b2930;--scrim:rgba(0,0,0,.55);--danger:#f2b8b5;
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%}
+body{background:var(--surface);color:var(--on-surface);font-family:Roboto,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.4}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+svg{display:block}
+
+.app{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:110px}
+.prev{margin:10px 16px 0;padding:8px 12px;border-radius:10px;background:var(--indicator);color:var(--on-indicator);font-size:13px}
+
+.top{display:flex;align-items:center;justify-content:space-between;padding:26px 22px 14px}
+.top h1{margin:0;font-size:30px;font-weight:400;letter-spacing:-.01em}
+.top .tools{display:flex;gap:18px}
+.top .tools button{width:34px;height:34px;display:grid;place-items:center;border-radius:50%;color:var(--on-surface)}
+.top .tools button:active{background:color-mix(in srgb,var(--on-surface) 12%,transparent)}
+.top .tools svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:10px 16px 0}
+.grid.list{grid-template-columns:1fr}
+.vm{border:1px solid var(--outline);border-radius:16px;min-height:330px;display:flex;flex-direction:column;align-items:center;padding:10px 8px 18px;min-width:0}
+.grid.list .vm{min-height:240px}
+.vt{font-size:15px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
+.vc{flex:1;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:8px 6px}
+.vc p{margin:0;font-size:15px;color:var(--on-var)}
+.vc .ok{font-size:13px;font-weight:600;color:var(--primary)}
+.vc .err{font-size:13px;color:var(--danger);word-break:break-word}
+.vc .ptxt{font-size:14px;color:var(--on-var)}
+.vc .big{font-size:34px;font-weight:400;line-height:1;color:var(--on-surface)}
+.bar{width:86%;height:8px;border-radius:4px;background:color-mix(in srgb,var(--primary) 18%,transparent);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--primary);border-radius:4px;transition:width .3s}
+.bar.ind i{width:40%;transition:none;animation:slide 1.1s infinite ease-in-out}
+@keyframes slide{0%{margin-left:-40%}100%{margin-left:100%}}
+.start{background:var(--primary);color:var(--on-primary);font-weight:700;font-size:16px;height:50px;min-width:108px;padding:0 26px;border-radius:25px;transition:filter .15s}
+.start:active{filter:brightness(1.2) saturate(1.1)}
+.outl{height:40px;padding:0 22px;border-radius:20px;border:1px solid var(--outline);color:var(--primary);font-weight:600;font-size:14px}
+.outl:active{background:color-mix(in srgb,var(--primary) 14%,transparent)}
+.vf{display:flex;gap:18px;justify-content:center}
+.vf button{width:36px;height:36px;display:grid;place-items:center;border-radius:50%;color:var(--primary)}
+.vf button:active{background:color-mix(in srgb,var(--primary) 16%,transparent)}
+.vf svg{width:23px;height:23px;fill:currentColor}
+
+.empty{padding:90px 36px 0;text-align:center;color:var(--on-var)}
+.empty b{display:block;color:var(--on-surface);font-weight:500;font-size:18px;margin-bottom:6px}
+
+.bottom{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(520px,100%);height:84px;background:var(--navbar);display:flex;justify-content:center;align-items:flex-start;padding-top:12px;z-index:5}
+.nav{display:flex;flex-direction:column;align-items:center;gap:4px;width:110px}
+.nav .pill{width:64px;height:32px;border-radius:16px;background:var(--indicator);display:grid;place-items:center;color:var(--on-indicator)}
+.nav .pill svg{width:24px;height:24px;fill:currentColor}
+.nav span{font-size:12px;font-weight:700}
+
+.scrim{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+.scrim.on{display:flex}
+.dlg{background:var(--dialog);border-radius:28px;padding:24px;width:min(360px,100%);animation:pop .18s ease-out}
+@keyframes pop{from{transform:scale(.94);opacity:0}to{transform:none;opacity:1}}
+.dlg h2{margin:0 0 20px;font-size:24px;font-weight:400}
+.dlg .msg{margin:-8px 0 18px;color:var(--on-var);font-size:14px}
+.tf{position:relative;margin-bottom:22px}
+.tf label{position:absolute;left:12px;top:-9px;font-size:12px;padding:0 5px;background:var(--dialog);color:var(--on-var);border-radius:4px}
+.tf:focus-within label{color:var(--primary)}
+.tf input,.tf select{width:100%;height:56px;padding:0 16px;border:1px solid var(--outline);border-radius:4px;background:transparent;color:var(--on-surface);font:inherit;outline:none;appearance:none;-webkit-appearance:none}
+.tf input:focus,.tf select:focus{border:2px solid var(--primary);padding:0 15px}
+.tf select{padding-right:44px}
+.tf select option{color:#1d1b20}
+.tf .chev{position:absolute;right:14px;top:50%;transform:translateY(-50%);pointer-events:none;width:20px;height:20px;fill:var(--on-var)}
+.dacts{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;align-items:center}
+.dacts .tb{height:40px;padding:0 14px;border-radius:20px;color:var(--primary);font-weight:600;font-size:14px}
+.dacts .tb:active{background:color-mix(in srgb,var(--primary) 14%,transparent)}
+.dacts .tb.del{color:var(--danger);margin-right:auto}
+
+.toast{position:fixed;bottom:104px;left:50%;transform:translateX(-50%) translateY(12px);background:#322f35;color:#f5eff7;padding:12px 18px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;z-index:30;font-size:14px;max-width:calc(100vw - 32px);text-align:center}
+.toast.on{opacity:1;transform:translateX(-50%)}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="prev" id="prev" hidden>Önizleme modu: indirme simüle ediliyor. Gerçek indirme Android uygulamasında çalışır.</div>
+  <div class="top">
+    <h1>VM</h1>
+    <div class="tools">
+      <button data-a="layout" aria-label="Görünümü değiştir">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/></svg>
+      </button>
+      <button data-a="add" id="addBtn" aria-label="Sanal makine ekle">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v9M7.5 12h9"/></svg>
+      </button>
+    </div>
+  </div>
+  <div id="content"></div>
+</div>
+
+<div class="bottom">
+  <div class="nav">
+    <div class="pill">
+      <svg viewBox="0 0 24 24"><path d="M6.5 10a5.5 5.5 0 0 1 11 0z"/><path d="M8.2 4.2l1.4 1.6M15.8 4.2l-1.4 1.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none"/><circle cx="9.6" cy="7.6" r=".8" style="fill:var(--indicator)"/><circle cx="14.4" cy="7.6" r=".8" style="fill:var(--indicator)"/><rect x="6.5" y="11" width="11" height="8" rx="1.8"/><rect x="3.6" y="11" width="2" height="6" rx="1"/><rect x="18.4" y="11" width="2" height="6" rx="1"/><rect x="9" y="18.4" width="2.1" height="3.4" rx="1.05"/><rect x="12.9" y="18.4" width="2.1" height="3.4" rx="1.05"/></svg>
+    </div>
+    <span>VM</span>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"><div class="dlg" id="dlg" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   NATIVE KÖPRÜ
+   Android uygulamasında window.Android vardır (Bridge.kt).
+   Tarayıcıda açılırsa indirme simüle edilir (önizleme modu).
+   ============================================================ */
+const hasNative = typeof window.Android !== 'undefined';
+
+function makeMock(){
+  const cat = [7,8,9,10,11,12].map(n => ({id:'android'+n, label:'Android '+n, available:n===7}));
+  const st = {};
+  const timers = {};
+  const TOTAL = 316.57 * 1048576;
+  const idle = {phase:'none', done:0, total:0, message:''};
+  return {
+    catalog: () => cat,
+    status(){ const o = {}; cat.forEach(c => { o[c.id] = st[c.id] || idle; }); return o; },
+    download(id){
+      const cur = st[id] && st[id].phase;
+      if(['resolving','downloading','extracting','ready'].includes(cur)) return 'ok';
+      st[id] = {phase:'resolving', done:0, total:0, message:''};
+      setTimeout(() => {
+        if(!st[id] || st[id].phase !== 'resolving') return;
+        let done = 0;
+        st[id] = {phase:'downloading', done:0, total:TOTAL, message:''};
+        timers[id] = setInterval(() => {
+          done += TOTAL / 40;
+          if(done < TOTAL){ st[id] = {phase:'downloading', done, total:TOTAL, message:''}; return; }
+          clearInterval(timers[id]);
+          let ex = 0;
+          st[id] = {phase:'extracting', done:0, total:100, message:''};
+          timers[id] = setInterval(() => {
+            ex += 20;
+            if(ex >= 100){ clearInterval(timers[id]); st[id] = {phase:'ready', done:0, total:0, message:''}; }
+            else st[id] = {phase:'extracting', done:ex, total:100, message:''};
+          }, 400);
+        }, 300);
+      }, 700);
+      return 'ok';
+    },
+    cancel(id){
+      clearInterval(timers[id]);
+      st[id] = {phase:'none', done:(st[id] && st[id].done) || 0, total:0, message:'Durduruldu'};
+    },
+    startVm: () => ({ok:false, message:'Önizleme modu: Android motoru yok. Gerçek çalıştırma uygulamada.'})
+  };
+}
+
+const native = hasNative ? {
+  catalog(){ try{ return JSON.parse(Android.getCatalog()); }catch(e){ return []; } },
+  status(){ try{ return JSON.parse(Android.getStatus()); }catch(e){ return {}; } },
+  download(id){ try{ return String(Android.startDownload(id)); }catch(e){ return 'İndirme başlatılamadı'; } },
+  cancel(id){ try{ Android.cancelDownload(id); }catch(e){} },
+  startVm(id, name){ try{ return JSON.parse(Android.startVm(id, name)); }catch(e){ return {ok:false, message:'Motor yanıt vermedi'}; } }
+} : makeMock();
+
+/* ============================================================
+   DURUM
+   ============================================================ */
+const KEY = 'virtual-android-ui-v2';
+const ACTIVE = ['resolving','downloading','verifying','extracting'];
+const $ = s => document.querySelector(s);
+const uid = () => Math.random().toString(36).slice(2,9);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const mb = b => { const m = b / 1048576; return m >= 10 ? String(Math.round(m)) : m.toFixed(1); };
+
+let store = (function(){
+  try{ const o = JSON.parse(localStorage.getItem(KEY)); if(o && Array.isArray(o.vms)) return o; }catch(e){}
+  return {vms:[], counter:0, list:false};
+})();
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} }
+
+let catalog = [];     // [{id,label,available}]
+let statuses = {};    // romId -> {phase,done,total,message}
+
+const IC = {
+  power:'<svg viewBox="0 0 24 24"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42A6.92 6.92 0 0 1 19 12c0 3.87-3.13 7-7 7A6.995 6.995 0 0 1 7.58 6.58L6.17 5.17A8.932 8.932 0 0 0 3 12a9 9 0 0 0 18 0c0-2.74-1.23-5.18-3.17-6.83z"/></svg>',
+  vol:'<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>',
+  mute:'<svg viewBox="0 0 24 24"><path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>',
+  cog:'<svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>',
+  chev:'<svg class="chev" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>'
+};
+
+/* ============================================================
+   LİSTE
+   ============================================================ */
+function render(){
+  const c = $('#content');
+  if(!store.vms.length){
+    c.innerHTML = '<div class="empty"><b>Henüz sanal makine yok</b>Sağ üstteki + düğmesine basarak ekleyebilirsin.</div>';
+    return;
+  }
+  c.innerHTML = '<div class="grid ' + (store.list ? 'list' : '') + '">' + store.vms.map(v => `
+    <div class="vm">
+      <div class="vt" title="${esc(v.name)}">${esc(v.name)}</div>
+      <div class="vc" data-id="${v.id}" data-key=""></div>
+      <div class="vf">
+        <button data-a="power" data-id="${v.id}" aria-label="Güç">${IC.power}</button>
+        <button data-a="vol" data-id="${v.id}" aria-label="Ses">${v.muted ? IC.mute : IC.vol}</button>
+        <button data-a="cfg" data-id="${v.id}" aria-label="Ayarlar">${IC.cog}</button>
+      </div>
+    </div>`).join('') + '</div>';
+  paint();
+}
+
+function stopBtn(v){ return `<button class="outl" data-a="stop" data-id="${v.id}">Durdur</button>`; }
+
+function centerHTML(v, s){
+  switch(s.phase){
+    case 'ready':
+      return `<span class="ok">✓ İndirildi</span>
+              <p>Android'i bir uygulama içinde çalıştır</p>
+              <button class="start" data-a="start" data-id="${v.id}">Başlat</button>`;
+    case 'resolving':
+      return `<div class="bar ind"><i></i></div>
+              <p class="ptxt">${esc(s.message || 'Bağlantı hazırlanıyor…')}</p>${stopBtn(v)}`;
+    case 'downloading':
+      return `<div class="ptxt">İndiriliyor</div>
+              <div class="big">%<span class="pct">0</span></div>
+              <div class="bar"><i></i></div>
+              <div class="ptxt det"></div>${stopBtn(v)}`;
+    case 'verifying':
+      return `<div class="ptxt">Doğrulanıyor</div>
+              <div class="big">%<span class="pct">0</span></div>
+              <div class="bar"><i></i></div>`;
+    case 'extracting':
+      return `<div class="ptxt">Kuruluyor</div>
+              <div class="big">%<span class="pct">0</span></div>
+              <div class="bar"><i></i></div>
+              <div class="ptxt">Bu birkaç dakika sürebilir</div>`;
+    case 'error':
+      return `<p class="err">${esc(s.message || 'Bir hata oluştu')}</p>
+              <button class="start" data-a="dl" data-id="${v.id}">Tekrar dene</button>`;
+    default: {
+      const cat = catalog.find(c => c.id === v.romId);
+      if(cat && !cat.available) return `<p>Bu sürümün indirme bağlantısı yakında eklenecek.</p>`;
+      const note = s.message ? esc(s.message) + '. ' : '';
+      const body = s.done > 0 ? `${mb(s.done)} MB indirildi, kaldığı yerden devam edebilirsin.` : 'Android dosyası henüz indirilmedi.';
+      return `<p>${note}${body}</p>
+              <button class="start" data-a="dl" data-id="${v.id}">${s.done > 0 ? 'Devam et' : 'İndir'}</button>`;
+    }
+  }
+}
+
+function updateBar(el, s){
+  const bar = el.querySelector('.bar');
+  if(!bar) return;
+  const known = s.total > 0;
+  const pct = known ? Math.min(100, Math.floor(s.done * 100 / s.total)) : 0;
+  bar.classList.toggle('ind', !known);
+  const fill = bar.querySelector('i');
+  fill.style.width = known ? pct + '%' : '';
+  const p = el.querySelector('.pct');
+  if(p) p.textContent = known ? pct : '…';
+  const d = el.querySelector('.det');
+  if(d) d.textContent = s.phase === 'downloading' ? (known ? mb(s.done) + ' / ' + mb(s.total) + ' MB' : mb(s.done) + ' MB') : '';
+}
+
+/* Kartları yerinde günceller: düğmeler her turda yeniden çizilmez, dokunuş kaybolmaz. */
+function paint(){
+  store.vms.forEach(v => {
+    const el = document.querySelector('.vc[data-id="' + v.id + '"]');
+    if(!el) return;
+    const s = statuses[v.romId] || {phase:'none', done:0, total:0, message:''};
+    const key = s.phase + '|' + (s.message || '') + '|' + (s.phase === 'none' ? (s.done > 0 ? 'p' : '') : '');
+    if(el.dataset.key !== key){
+      el.innerHTML = centerHTML(v, s);
+      el.dataset.key = key;
+    }
+    updateBar(el, s);
+  });
+}
+
+/* ============================================================
+   DURUM SORGULAMA
+   ============================================================ */
+let pollT = null;
+function anyActive(){ return store.vms.some(v => ACTIVE.includes((statuses[v.romId] || {}).phase)); }
+function refresh(){
+  statuses = native.status() || {};
+  paint();
+  clearTimeout(pollT);
+  if(anyActive()) pollT = setTimeout(refresh, 700);
+}
+document.addEventListener('visibilitychange', () => { if(!document.hidden) refresh(); });
+
+/* ============================================================
+   DİYALOGLAR
+   ============================================================ */
+function openDlg(html){ $('#dlg').innerHTML = html; $('#scrim').classList.add('on'); }
+function closeDlg(){ $('#scrim').classList.remove('on'); }
+const defName = (label, n) => label + '_' + n;
+
+let draft = null;
+function dlgAdd(){
+  if(!catalog.length){
+    openDlg(`<h2>Sürüm listesi okunamadı</h2>
+      <p class="msg">versions.json dosyası okunamadı. Dosyada bir yazım hatası olabilir.</p>
+      <div class="dacts"><button class="tb" data-a="close">Tamam</button></div>`);
+    return;
+  }
+  const first = catalog.find(c => c.available);
+  if(!first){
+    openDlg(`<h2>Sürüm yok</h2>
+      <p class="msg">Henüz hiçbir Android sürümünün indirme bağlantısı eklenmedi.</p>
+      <div class="dacts"><button class="tb" data-a="close">Tamam</button></div>`);
+    return;
+  }
+  draft = {label:first.label, nameEdited:false};
+  openDlg(`
+    <h2>Yeni sanal makine</h2>
+    <div class="tf"><label for="d-ver">Android sürümü</label>
+      <select id="d-ver">${catalog.map(c => `<option value="${esc(c.id)}" ${c.id === first.id ? 'selected' : ''} ${c.available ? '' : 'disabled'}>${esc(c.label)}${c.available ? '' : ' (yakında)'}</option>`).join('')}</select>${IC.chev}</div>
+    <div class="tf"><label for="d-name">Sanal makine adı</label>
+      <input id="d-name" type="text" maxlength="30" autocomplete="off" value="${esc(defName(first.label, store.counter + 1))}"></div>
+    <div class="dacts">
+      <button class="tb" data-a="close">İptal</button>
+      <button class="tb" data-a="create">Tamam</button>
+    </div>`);
+  setTimeout(() => { const i = $('#d-name'); if(i){ i.focus(); i.select(); } }, 40);
+}
+function dlgCfg(id){
+  const v = store.vms.find(x => x.id === id); if(!v) return;
+  openDlg(`
+    <h2>Ayarlar</h2>
+    <div class="tf"><label for="c-name">Sanal makine adı</label>
+      <input id="c-name" type="text" maxlength="30" autocomplete="off" value="${esc(v.name)}"></div>
+    <p class="msg">Android sürümü: ${esc(v.label)}</p>
+    <div class="dacts">
+      <button class="tb del" data-a="askdel" data-id="${id}">Sil</button>
+      <button class="tb" data-a="close">İptal</button>
+      <button class="tb" data-a="cfgok" data-id="${id}">Tamam</button>
+    </div>`);
+}
+function dlgDel(id){
+  const v = store.vms.find(x => x.id === id); if(!v) return;
+  openDlg(`
+    <h2>Silinsin mi?</h2>
+    <p class="msg">“${esc(v.name)}” listeden kaldırılacak. İndirilen Android dosyası telefonda kalır.</p>
+    <div class="dacts">
+      <button class="tb" data-a="close">İptal</button>
+      <button class="tb del" style="margin-right:0" data-a="delok" data-id="${id}">Sil</button>
+    </div>`);
+}
+
+let tt;
+function toast(m){ const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 3600); }
+
+/* Android geri tuşu: açık pencere varsa kapat */
+window.__onBack = function(){
+  if($('#scrim').classList.contains('on')){ closeDlg(); return true; }
+  return false;
+};
+
+/* ============================================================
+   OLAYLAR
+   ============================================================ */
+document.addEventListener('click', e => {
+  if(e.target.id === 'scrim'){ closeDlg(); return; }
+  const el = e.target.closest('[data-a]'); if(!el) return;
+  const a = el.dataset.a, id = el.dataset.id;
+  const vm = store.vms.find(x => x.id === id);
+  switch(a){
+    case 'add': dlgAdd(); break;
+    case 'layout': store.list = !store.list; save(); render(); break;
+    case 'close': closeDlg(); break;
+    case 'create': {
+      const romId = $('#d-ver').value;
+      const cat = catalog.find(c => c.id === romId);
+      if(!cat || !cat.available){ toast('Bu sürümün bağlantısı henüz eklenmedi'); break; }
+      store.counter++;
+      const name = $('#d-name').value.trim() || defName(cat.label, store.counter);
+      store.vms.push({id:uid(), name, romId, label:cat.label, muted:false});
+      save(); closeDlg(); render();
+      const r = native.download(romId);
+      if(r !== 'ok') toast(r);
+      refresh();
+      break;
+    }
+    case 'dl': if(vm){ const r = native.download(vm.romId); if(r !== 'ok') toast(r); refresh(); } break;
+    case 'stop': if(vm){ native.cancel(vm.romId); setTimeout(refresh, 400); } break;
+    case 'start': if(vm){ const r = native.startVm(vm.romId, vm.name); toast(r.message || (r.ok ? 'Başlatıldı' : 'Başlatılamadı')); } break;
+    case 'power': if(vm) toast('Güç düğmesi: Android motoru henüz bağlı değil'); break;
+    case 'vol': if(vm){ vm.muted = !vm.muted; save(); render(); } break;
+    case 'cfg': dlgCfg(id); break;
+    case 'cfgok': if(vm){ vm.name = $('#c-name').value.trim() || vm.name; save(); closeDlg(); render(); } break;
+    case 'askdel': dlgDel(id); break;
+    case 'delok': if(vm){
+      store.vms = store.vms.filter(x => x.id !== id);
+      // bu sürümü kullanan başka makine kalmadıysa ve indirme sürüyorsa durdur
+      if(!store.vms.some(x => x.romId === vm.romId) && ACTIVE.includes((statuses[vm.romId] || {}).phase)) native.cancel(vm.romId);
+      save(); closeDlg(); render();
+    } break;
+  }
+});
+
+document.addEventListener('change', e => {
+  if(e.target.id === 'd-ver' && draft){
+    const cat = catalog.find(c => c.id === e.target.value);
+    if(cat){ draft.label = cat.label; const n = $('#d-name'); if(n && !draft.nameEdited) n.value = defName(cat.label, store.counter + 1); }
+  }
+});
+document.addEventListener('input', e => { if(e.target.id === 'd-name' && draft) draft.nameEdited = true; });
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') closeDlg();
+  if(e.key === 'Enter' && e.target.tagName === 'INPUT'){
+    const ok = document.querySelector('.dacts [data-a="create"], .dacts [data-a="cfgok"]');
+    if(ok) ok.click();
+  }
+});
+
+/* ============================================================
+   BAŞLANGIÇ
+   ============================================================ */
+if(!hasNative) $('#prev').hidden = false;
+catalog = native.catalog() || [];
+render();
+refresh();
+</script>
+</body>
+</html>
