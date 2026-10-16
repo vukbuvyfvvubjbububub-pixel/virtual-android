@@ -34,5 +34,39 @@ jobs:
 
       # Testler APK'dan sonra çalışır: bir test hata verse bile APK yukarıda yüklenmiş olur.
       - name: Birim testleri
+        id: tests
         continue-on-error: true
-        run: gradle --no-daemon testDebugUnitTest
+        shell: bash
+        run: gradle --no-daemon testDebugUnitTest 2>&1 | tee gradle-test.log
+
+      # Test hata verdiyse nedenini "Annotations" bölümüne yazar (log açmadan okunabilsin diye).
+      - name: Test hatalarını göster
+        if: steps.tests.outcome == 'failure'
+        run: |
+          python3 - <<'EOF'
+          import glob, re
+          import xml.etree.ElementTree as ET
+
+          def esc(s):
+              return s.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+
+          def esc_prop(s):
+              return esc(s).replace(':', '%3A').replace(',', '%2C')
+
+          found = False
+          for f in sorted(glob.glob('app/build/test-results/testDebugUnitTest/*.xml')):
+              root = ET.parse(f).getroot()
+              for tc in root.iter('testcase'):
+                  for kind in ('failure', 'error'):
+                      for el in tc.findall(kind):
+                          found = True
+                          msg = (el.get('message') or '') + ' ' + (el.text or '')[:600]
+                          print('::error title=' + esc_prop('Test basarisiz - ' + tc.get('name', '?')) + '::' + esc(msg[:900]))
+          if not found:
+              try:
+                  lines = open('gradle-test.log', encoding='utf-8', errors='replace').read().splitlines()
+              except OSError:
+                  lines = []
+              keep = [l for l in lines if re.search(r'error:|^e: |FAILED|What went wrong|Execution failed|Could not', l)]
+              print('::error title=Test adimi cokti::' + esc('\n'.join((keep or lines)[-25:])[:1500]))
+          EOF
